@@ -1,0 +1,252 @@
+---
+title: "Making Republic of Ireland CoM tables"
+author: "Dave"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r libraries}
+#| output: false
+library(fs)
+library(here)
+
+library(vroom)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(forcats)
+library(tidyr)
+library(snakecase)
+```
+
+## Read in data
+
+### Read 'CoM List'
+
+That is, the list which joins CoM to dioceses and nations.
+
+```{r read_com_list}
+com <- vroom(here("com-list.csv"), col_types = "cccc")
+
+com <- filter(com, nation == "republic-of-ireland")
+
+if(!interactive()) head(com, 3)
+```
+
+### Read CoM Stats
+
+```{r define_stats}
+stats <- c("age", "ethnicity",
+           "ethnicity-harmonised", "general-health", 
+           "household-composition", "religion")
+
+names(stats) <- stats
+```
+
+```{r make_com_data_helper}
+read_com_data <- function(x){
+  
+  census_file <-
+    here("data", "com-stats",
+         str_c("irish-com", x, "2016", sep = "_") |>
+           str_c(".csv"))
+  
+  vroom(census_file, show_col_types = FALSE)
+}
+```
+
+```{r read_com_data}
+com_data <- map(stats, read_com_data)
+```
+
+### Read diocesan stats
+
+```{r make_diocesan_stats_helper}
+read_diocesan_data <- function(x){
+  
+  data_file <-
+    here("data", "diocesan-stats",
+         str_c("republic-of-ireland", "dioceses", x, "2016", sep = "_") |> 
+           str_c(".csv"))
+  
+  vroom(data_file, show_col_types = FALSE)
+}
+```
+
+```{r read_diocesan_stats}
+diocesan_data <- map(stats, read_diocesan_data)
+
+if(!interactive()){
+  diocesan_data[[1]] |>
+    head()
+}
+```
+
+### Read national stats
+
+```{r make_national_data_helper}
+read_national_data <- function(x){
+  
+  data_file <- 
+    here("data", "national-stats",
+         str_c("republic-of-ireland", x, "sa", "2016", sep = "_") |> 
+           str_c(".RDS"))
+  
+  readRDS(data_file)
+}
+```
+
+```{r read_national_data}
+national_data <- map(stats, read_national_data)
+
+rm(stats)
+```
+
+## Prepare Joining Fields
+
+```{r prepare_joining_fields}
+
+diocesan_data <- map(diocesan_data,
+                     \(x){
+                       mutate(x, 
+                              diocese =
+                                str_to_lower(diocese) |>
+                                str_squish() |> 
+                                str_remove_all("[:punct:]") |> 
+                                str_replace_all(" ", "-") |> 
+                                str_remove_all("-and"))
+                       })
+
+national_data <-
+  map(national_data,
+      \(x){
+        ungroup(x) |> 
+          summarise(across(where(is.numeric), sum))
+})
+
+national_data <-
+  map(national_data, \(x) mutate(x, nation = "republic-of-ireland"))
+
+```
+
+## Pivot tables longer and combine
+
+### Hepler: `lenghten()`
+
+```{r lengthen}
+
+lengthen <- function(x, level, id_col){
+  
+  id_col <- enexpr(id_col)
+  
+  imap(x,
+       \(table, stat_name){
+         
+         units <- ifelse(
+           str_detect(stat_name, "household"), "households", "persons")
+         
+         pivot_longer(table, -!!id_col,
+                      names_to = "category",
+                      values_to = "count") |> 
+           
+           mutate(
+             level := level,
+             statistic := stat_name,
+             units = units) |>
+           relocate(level, !!id_col, statistic, category, units, count)
+       })
+}
+```
+
+### Pivot CoM data and combine
+
+```{r pivot_com_data}
+
+com_data_long <- lengthen(com_data, level = "centre-of-mission", com)
+  
+head(com_data_long[["household-composition"]])
+
+com_data <- bind_rows(com_data_long)
+```
+
+### Pivot diocesan data and combine
+
+```{r pivot_diocesan_data}
+
+diocesan_data_long <- lengthen(diocesan_data, level = "diocese", diocese)
+
+head(diocesan_data_long[["household-composition"]])
+
+diocesan_data <- bind_rows(diocesan_data_long)
+```
+
+### Pivot national data and combine
+
+```{r pivot_national_data}
+
+national_data_long <- lengthen(national_data, level = "nation", nation)
+
+head(national_data_long[["household-composition"]])
+
+national_data <- bind_rows(national_data_long)
+```
+
+```{r clean_workspace_1}
+rm(com_data_long, diocesan_data_long, national_data_long)
+```
+
+## Join CoM names to diocesan and national data
+
+```{r join_com_names_to_data}
+
+national_data <-
+  right_join(national_data,
+            select(com, com, nation),
+            by = "nation") |> 
+  select(-nation)
+
+diocesan_data <- 
+  right_join(diocesan_data,
+            select(com, com, diocese),
+            by = "diocese") |> 
+  select(-diocese)
+
+head(national_data)
+head(diocesan_data)
+head(com_data)
+```
+
+### Combine all data
+
+```{r allData}
+all_data <-
+  bind_rows(com_data, diocesan_data, national_data) |> 
+  relocate(com, level, statistic, category, units, count) |> 
+  arrange(com, statistic, level, category)
+
+
+glimpse(all_data)
+
+all_data <- 
+  left_join(com, all_data, by = "com") |> 
+  mutate(nation_label = snakecase::to_title_case(nation)) |> 
+  relocate(nation_label, .after = nation)
+
+glimpse(all_data)
+head(all_data)
+```
+
+## Save
+
+```{r save}
+save_dir <- dir_create(here("data", "comprehensive-com-data"))
+
+saveRDS(all_data,
+        file.path(save_dir, "republic-of-ireland_all-com-data_no-relative-counts.RDS"))
+
+vroom_write(all_data, 
+      file.path(save_dir, "republic-of-ireland_all-com-data_no-relative-counts.csv"),
+      delim = ",")
+```

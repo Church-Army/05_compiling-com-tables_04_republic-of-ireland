@@ -1,0 +1,11 @@
+.Rproj.user
+*.html
+R/*_files
+R/*_cache
+*.xlsx
+/.Rhistory
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto

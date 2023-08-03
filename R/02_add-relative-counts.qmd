@@ -1,0 +1,67 @@
+---
+title: "Make relative counts"
+author: "Dave"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r libraries}
+library(here)
+library(fs)
+
+library(dplyr)
+library(vroom)
+```
+
+## Read data
+
+```{r read_data}
+stats <-
+  readRDS(
+    here("data", "comprehensive-com-data",
+         "republic-of-ireland_all-com-data_no-relative-counts.RDS"))
+```
+
+## Make relative
+
+```{r make_relative}
+relative <- 
+  stats |> 
+  group_by(com, level, statistic) |> 
+  mutate(proportion = count/sum(count))
+```
+
+## Check working
+
+```{r check_working}
+relative |> 
+  filter(com == "newry",
+         statistic == "ethnicity-harmonised") |> 
+  select(com, category, count, proportion)
+
+check <- 
+relative |> 
+  summarise(all = sum(proportion))
+
+head(check, 20)
+
+filter(check, is.na(all))
+
+all(round(check[["all"]], 10) == 1)
+
+```
+
+## Save
+
+```{r save}
+saveRDS(relative,
+        here("data", "comprehensive-com-data",
+             "republic-of-ireland_all-com-data.RDS"))
+
+vroom_write(relative,
+            here("data", "comprehensive-com-data",
+                 "republic-of-ireland_all-com-data.csv"),
+            delim = ",")
+```

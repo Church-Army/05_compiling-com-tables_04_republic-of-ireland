@@ -1,0 +1,45 @@
+---
+title: "Split RoI CoM profiles by statistic"
+author: "Dave"
+format: html
+editor: visual
+---
+
+## Intro
+
+We've made a massive table of every stat for CoM profiles, but for our purposes it will be easier to work with if we split this into a list of tibbles, each corresponding to one statistic.
+
+## Libraries
+
+```{r libs}
+library(here)
+
+library(dplyr)
+```
+
+## Read
+
+```{r read}
+stats <-
+  readRDS(here("data",
+               "comprehensive-com-data",
+               "republic-of-ireland_all-com-data.RDS"))
+```
+
+## Split
+
+```{r split}
+stats <- group_by(stats, statistic)
+
+keys <- group_keys(stats)[["statistic"]]
+
+stats <- group_split(stats)
+names(stats) <- keys
+```
+
+## Save
+
+```{r save}
+saveRDS(stats,
+        here("data", "comprehensive-com-data", "republic-of-ireland_com-data-split.RDS"))
+```
