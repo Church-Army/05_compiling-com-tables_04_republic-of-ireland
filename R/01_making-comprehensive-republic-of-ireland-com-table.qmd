@@ -9,11 +9,14 @@ editor: visual
 
 ```{r libraries}
 #| output: false
+library(conflicted)
+
 library(fs)
 library(here)
 
 library(vroom)
 library(dplyr)
+conflicted::conflicts_prefer(dplyr::filter)
 library(stringr)
 library(purrr)
 library(forcats)
@@ -50,7 +53,7 @@ read_com_data <- function(x){
   
   census_file <-
     here("data", "com-stats",
-         str_c("irish-com", x, "2016", sep = "_") |>
+         str_c("irish-com", x, "2022", sep = "_") |>
            str_c(".csv"))
   
   vroom(census_file, show_col_types = FALSE)
@@ -68,7 +71,7 @@ read_diocesan_data <- function(x){
   
   data_file <-
     here("data", "diocesan-stats",
-         str_c("republic-of-ireland", "dioceses", x, "2016", sep = "_") |> 
+         str_c("roi", "dioceses", x, "2022", sep = "_") |> 
            str_c(".csv"))
   
   vroom(data_file, show_col_types = FALSE)
@@ -91,7 +94,7 @@ read_national_data <- function(x){
   
   data_file <- 
     here("data", "national-stats",
-         str_c("republic-of-ireland", x, "sa", "2016", sep = "_") |> 
+         str_c("republic-of-ireland", x, "sa", "2022", sep = "_") |> 
            str_c(".RDS"))
   
   readRDS(data_file)
